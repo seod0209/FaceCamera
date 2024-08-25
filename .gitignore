@@ -72,3 +72,12 @@ yarn-error.log
 !.yarn/releases
 !.yarn/sdks
 !.yarn/versions
+
+# vscode
+.vscode
+
+# iOS API key
+*.p8
+
+# env
+.env*
