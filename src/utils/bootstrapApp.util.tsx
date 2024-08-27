@@ -1,5 +1,11 @@
 import Config from 'react-native-config';
-import {UIManager} from 'react-native';
+import {
+  KeyboardAvoidingView,
+  ScrollView,
+  Text,
+  TouchableOpacity,
+  UIManager,
+} from 'react-native';
 import {enableScreens} from 'react-native-screens';
 import * as Sentry from '@sentry/react-native';
 
@@ -20,8 +26,23 @@ function bootstrapApp() {
   });
 
   if (isAndroid && UIManager.setLayoutAnimationEnabledExperimental) {
-    UIManager.setLayoutAnimationEnabledExperimental(true);
+    UIManager.setLayoutAnimationEnabledExperimental(true); // Enables layout animations. This setting applies only to the Android platform.
   }
+
+  (ScrollView as any).defaultProps = {
+    keyboardShouldPersistTaps: 'handled', // Ensures that the keyboard does not automatically dismiss when touching the scrollable area of the screen.
+  };
+  (KeyboardAvoidingView as any).defaultProps = {
+    behavior: isAndroid ? 'none' : 'padding', // Determines how the keyboard avoids overlapping the screen content. On Android, it is set to 'none', while on iOS it is set to 'padding'.
+  };
+  (Text as any).defaultProps = {
+    minimumFontScale: 1,
+    maxFontSizeMultiplier: 1,
+    underlineColorAndroid: 'transparent',
+  };
+  (TouchableOpacity as any).defaultProps = {
+    activeOpacity: 0.5,
+  };
 
   enableScreens();
 }
