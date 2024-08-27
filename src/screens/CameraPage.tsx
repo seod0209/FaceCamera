@@ -1,10 +1,15 @@
-import React, {FC, useRef} from 'react';
-import {StyleSheet, View} from 'react-native';
+import React, {useRef} from 'react';
+import {StyleSheet, View, Text} from 'react-native';
 import {Camera} from 'react-native-vision-camera';
 
-const CameraPage: FC = () => {
+const CameraPage = () => {
   const camera = useRef<Camera | null>(null);
-  return <View style={styles.container}></View>;
+
+  return (
+    <View style={styles.container}>
+      <Text>카메라에여</Text>
+    </View>
+  );
 };
 
 export default CameraPage;
@@ -12,6 +17,5 @@ export default CameraPage;
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#ffffff',
   },
 });
