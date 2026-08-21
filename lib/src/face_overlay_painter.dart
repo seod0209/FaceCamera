@@ -2,39 +2,48 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
 
+import 'coordinates_translator.dart';
 import 'roi.dart';
 
 /// Renders the face-guide overlay and detected faces.
 ///
-/// Faces are reported in [detSize] coordinates (the upright ML Kit space of the
-/// region that was actually fed to the detector). That region maps onto the
-/// [detFraction] sub-rectangle of the preview, so a face point is placed by
-/// normalizing within [detSize] and scaling into that sub-rectangle — with a
-/// horizontal flip for the mirrored front camera.
+/// Two mapping modes:
+///  - Full frame (`cropMode == false`): faces are in full-image coordinates and
+///    mapped with the official [translateX]/[translateY] (correct on iOS too).
+///  - ROI crop (`cropMode == true`): faces are in the cropped upright space
+///    ([detSize]); mapped by normalizing into the [detFraction] sub-rectangle.
 class FaceOverlayPainter extends CustomPainter {
   FaceOverlayPainter({
     required this.faces,
+    required this.imageSize,
+    required this.rotation,
+    required this.lensDirection,
+    required this.roi,
+    required this.showGuide,
+    required this.cropMode,
     required this.detSize,
     required this.detFraction,
-    required this.roi,
-    required this.lensDirection,
   });
 
   final List<Face> faces;
-  final Size detSize;
-  final Rect detFraction; // fraction (0..1) of preview the detector saw
-  final Roi roi;
+  final Size imageSize; // raw buffer size (full-frame mapping)
+  final InputImageRotation rotation;
   final CameraLensDirection lensDirection;
+  final Roi roi;
+  final bool showGuide;
+  final bool cropMode;
+  final Size detSize; // cropped upright dims (crop mode)
+  final Rect detFraction; // fraction of preview the detector saw (crop mode)
 
   @override
   void paint(Canvas canvas, Size size) {
     final roiRect = roi.toRect(size);
     final anyFaceInRoi = _drawFaces(canvas, size, roiRect);
-    _drawGuide(canvas, size, roiRect, active: anyFaceInRoi);
+    if (showGuide) _drawGuide(canvas, size, roiRect, active: anyFaceInRoi);
   }
 
-  /// Dim everything outside the ROI and stroke an oval face guide inside it.
-  void _drawGuide(Canvas canvas, Size size, Rect roiRect, {required bool active}) {
+  void _drawGuide(Canvas canvas, Size size, Rect roiRect,
+      {required bool active}) {
     final scrim = Paint()..color = Colors.black.withValues(alpha: 0.5);
     canvas.saveLayer(Offset.zero & size, Paint());
     canvas.drawRect(Offset.zero & size, scrim);
@@ -50,7 +59,6 @@ class FaceOverlayPainter extends CustomPainter {
     );
   }
 
-  /// Draws detected faces; returns whether any face lies within the ROI.
   bool _drawFaces(Canvas canvas, Size size, Rect roiRect) {
     final region = Rect.fromLTRB(
       detFraction.left * size.width,
@@ -70,7 +78,9 @@ class FaceOverlayPainter extends CustomPainter {
 
     var any = false;
     for (final face in faces) {
-      final rect = _mapFace(face.boundingBox, region);
+      final rect = cropMode
+          ? _mapCropped(face.boundingBox, region)
+          : _mapFullFrame(face.boundingBox, size);
       final inRoi = isFaceInRoi(rect, roiRect);
       any = any || inRoi;
       canvas.drawRect(rect, inRoi ? inside : outside);
@@ -78,7 +88,23 @@ class FaceOverlayPainter extends CustomPainter {
     return any;
   }
 
-  Rect _mapFace(Rect box, Rect region) {
+  /// Full-frame: official translator (handles rotation + iOS/Android + mirror).
+  Rect _mapFullFrame(Rect box, Size size) {
+    final l = translateX(box.left, size, imageSize, rotation, lensDirection);
+    final r = translateX(box.right, size, imageSize, rotation, lensDirection);
+    final t = translateY(box.top, size, imageSize, rotation, lensDirection);
+    final b = translateY(box.bottom, size, imageSize, rotation, lensDirection);
+    return Rect.fromLTRB(
+      l < r ? l : r,
+      t < b ? t : b,
+      l < r ? r : l,
+      t < b ? b : t,
+    );
+  }
+
+  /// Crop mode: normalize within the cropped detector space, place into the ROI
+  /// region, flip X for the mirrored front camera.
+  Rect _mapCropped(Rect box, Rect region) {
     final nx1 = box.left / detSize.width;
     final nx2 = box.right / detSize.width;
     final ny1 = box.top / detSize.height;
@@ -87,7 +113,6 @@ class FaceOverlayPainter extends CustomPainter {
     final double sx1;
     final double sx2;
     if (lensDirection == CameraLensDirection.front) {
-      // Preview is mirrored; flip X so overlay tracks the visible face.
       sx1 = region.right - nx2 * region.width;
       sx2 = region.right - nx1 * region.width;
     } else {
@@ -102,7 +127,9 @@ class FaceOverlayPainter extends CustomPainter {
   @override
   bool shouldRepaint(FaceOverlayPainter old) {
     return old.faces != faces ||
-        old.detSize != detSize ||
-        old.detFraction != detFraction;
+        old.imageSize != imageSize ||
+        old.rotation != rotation ||
+        old.cropMode != cropMode ||
+        old.showGuide != showGuide;
   }
 }
